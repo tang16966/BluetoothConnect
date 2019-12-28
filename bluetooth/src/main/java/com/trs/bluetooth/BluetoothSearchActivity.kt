@@ -6,11 +6,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat.startActivityForResult
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.trs.bluetooth.adapter.BluAdapter
 import kotlinx.android.synthetic.main.activity_bluetooth_serach.*
 
-class BluetoothSearchActivity : AppCompatActivity() {
+class BluetoothSearchActivity : AppCompatActivity(){
+    val TAG = "BluetoothSearchActivity"
     private lateinit var bluetoothAdapter : BluetoothAdapter
     private var mScanning: Boolean = false
     private val handler = Handler()
@@ -24,13 +27,27 @@ class BluetoothSearchActivity : AppCompatActivity() {
         }
         initView()
         initBluetooth()
+    }
 
+    private fun initRefresh() {
+        refresh.setColorSchemeColors(resources.getColor(R.color.colorTheme))
+        refresh.setOnRefreshListener{
+            if (!mScanning){
+                scanLeDevice(true)
+            }
+        }
+        refresh.post {
+            refresh.isRefreshing = true
+            if (!mScanning){
+                scanLeDevice(true)
+            }
+        }
     }
 
     private fun initBluetooth() {
         bluetoothAdapter = BluetoothUtil.getBluetoothAdapter(this)
         if (bluetoothAdapter.isEnabled){
-            scanLeDevice(true)
+            initRefresh()
         }else{
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, 200)
@@ -44,14 +61,16 @@ class BluetoothSearchActivity : AppCompatActivity() {
                 handler.postDelayed({
                     mScanning = false
                     bluetoothAdapter.stopLeScan(leScanCallback)
-                    Log.e("------------","结束搜索")
+                    refresh.isRefreshing = false
+                    Log.e(TAG,"结束搜索")
                 }, 10000)
                 mScanning = true
-                Log.e("------------","开始搜索")
+                Log.e(TAG,"开始搜索")
                 bluetoothAdapter.startLeScan(leScanCallback)
             }
             else -> {
                 mScanning = false
+                refresh.isRefreshing = false
                 bluetoothAdapter.stopLeScan(leScanCallback)
             }
         }
@@ -64,7 +83,6 @@ class BluetoothSearchActivity : AppCompatActivity() {
                 adapter?.addData(device)
                 adapter?.notifyDataSetChanged()
             }
-
         }
     }
 
@@ -73,6 +91,8 @@ class BluetoothSearchActivity : AppCompatActivity() {
         recycler_view.adapter = adapter
         recycler_view.layoutManager = LinearLayoutManager(this)
     }
+
+
 
 
 }
