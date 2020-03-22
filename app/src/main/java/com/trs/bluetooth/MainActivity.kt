@@ -18,25 +18,27 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
     private var message = StringBuffer()
     private var bluetoothGatt: BluetoothGatt? = null
-    private var mCharacteristic: BluetoothGattCharacteristic? = null
+    private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    private var notifyCharacteristic: BluetoothGattCharacteristic? = null
+    private lateinit var coroutineScope: CoroutineScope
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         getPermission()
+        coroutineScope = CoroutineScope(Dispatchers.Main)
         txtMsg.text = message.append("消息提示\n").toString()
         button.setOnClickListener {
             startActivityForResult(Intent(this,BluetoothSearchActivity::class.java),200)
         }
         btnSend.setOnClickListener {
-            mCharacteristic?.value = edtSend.text.toString().toByteArray()
+            writeCharacteristic?.value = edtSend.text.toString().toByteArray()
+            writeCharacteristic?.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             txtMsg.text = message
-                .append("发送的数据：")
-                .append(edtSend.text.toString())
-                .append("\n")
+                .append("发送的数据：${edtSend.text}\n")
                 .toString()
-            bluetoothGatt?.writeCharacteristic(mCharacteristic)
+            bluetoothGatt?.writeCharacteristic(writeCharacteristic)
         }
     }
 
@@ -70,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when(newState){
                 BluetoothProfile.STATE_CONNECTED -> {
-                    GlobalScope.launch(Dispatchers.IO){
+                    coroutineScope.launch{
                         delay(500)
                         withContext(Dispatchers.Main){
                             txtMsg.text = message.append("蓝牙连接成功\n").toString()
@@ -93,18 +95,20 @@ class MainActivity : AppCompatActivity() {
                     message.append("{\n")
                     service.characteristics.forEach {
                         if (it.uuid == UUID.fromString(JDY_TAG_CHAR_DATA_UUID)){
-                            mCharacteristic = it
+                            notifyCharacteristic = it
+                            writeCharacteristic = it
                         }
                         message.append("uuid:${it.uuid}\n")
                     }
-                    GlobalScope.launch(Dispatchers.Main){
+                    coroutineScope.launch{
                         txtMsg.text = message.append("}\n").toString()
                     }
                 }
-                GlobalScope.launch(Dispatchers.Main){
-                    txtMsg.text = message.append(mCharacteristic?.uuid).toString()
+                bluetoothGatt?.setCharacteristicNotification(notifyCharacteristic,true)
+                coroutineScope.launch{
+                    txtMsg.text = message.append("连接成功的uuid:${notifyCharacteristic?.uuid}").toString()
                 }
-                bluetoothGatt?.setCharacteristicNotification(mCharacteristic,true)
+
             }
         }
 
@@ -113,11 +117,11 @@ class MainActivity : AppCompatActivity() {
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            txtMsg.text = message
-                .append("接收到数据：")
-                .append(characteristic?.value.toString())
-                .append("\n")
-                .toString()
+            coroutineScope.launch{
+                txtMsg.text = message
+                    .append("接收到数据：${characteristic?.value.toString()}\n")
+                    .toString()
+            }
         }
 
         override fun onCharacteristicWrite(
@@ -125,25 +129,28 @@ class MainActivity : AppCompatActivity() {
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            when(status){
-                BluetoothGatt.GATT_SUCCESS -> {
-                    txtMsg.text = message.append("写入成功\n").toString()
-                }
-                BluetoothGatt.GATT_FAILURE -> {
-                    txtMsg.text = message.append("写入失败\n").toString()
+            coroutineScope.launch{
+                when(status){
+                    BluetoothGatt.GATT_SUCCESS -> {
+                        txtMsg.text = message.append("写入成功\n").toString()
+                    }
+                    BluetoothGatt.GATT_FAILURE -> {
+                        txtMsg.text = message.append("写入失败\n").toString()
+                    }
                 }
             }
+
         }
 
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-            txtMsg.text = message
-                .append("changed接收到数据：")
-                .append(characteristic?.value.toString())
-                .append("\n")
-                .toString()
+            coroutineScope.launch{
+                txtMsg.text = message
+                    .append("changed接收到数据：${characteristic?.value.toString()}\n")
+                    .toString()
+            }
         }
     }
 
