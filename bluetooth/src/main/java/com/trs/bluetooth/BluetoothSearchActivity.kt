@@ -65,7 +65,7 @@ class BluetoothSearchActivity : AppCompatActivity(){
                     bluetoothAdapter.stopLeScan(leScanCallback)
                     refresh.isRefreshing = false
                     Log.e(TAG,"结束搜索")
-                }, 5000)
+                }, 3000)
                 mScanning = true
                 Log.e(TAG,"开始搜索")
                 bluetoothAdapter.startLeScan(leScanCallback)
@@ -94,10 +94,15 @@ class BluetoothSearchActivity : AppCompatActivity(){
         recycler_view.layoutManager = LinearLayoutManager(this)
         adapter?.setOnItemClickListener(object : BluAdapter.OnItemClickListener{
             override fun onClick(position: Int, device: BluetoothDevice) {
-                EventBus.getDefault().post(device)
+                EventBus.getDefault().post(BleEvent(device))
                 finish()
             }
         })
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        bluetoothAdapter.stopLeScan(leScanCallback)
     }
 
 

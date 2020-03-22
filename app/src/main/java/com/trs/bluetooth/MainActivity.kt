@@ -3,19 +3,23 @@ package com.trs.bluetooth
 import android.bluetooth.*
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.yanzhenjie.permission.AndPermission
 import com.yanzhenjie.permission.runtime.Permission
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.*
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
     private var message = StringBuffer()
     private var bluetoothGatt: BluetoothGatt? = null
     private var mCharacteristic: BluetoothGattCharacteristic? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,7 +27,7 @@ class MainActivity : AppCompatActivity() {
         getPermission()
         txtMsg.text = message.append("消息提示\n").toString()
         button.setOnClickListener {
-            startActivity(Intent(this,BluetoothSearchActivity::class.java))
+            startActivityForResult(Intent(this,BluetoothSearchActivity::class.java),200)
         }
         btnSend.setOnClickListener {
             mCharacteristic?.value = edtSend.text.toString().toByteArray()
@@ -50,19 +54,29 @@ class MainActivity : AppCompatActivity() {
             .start()
     }
 
+
     @Subscribe(threadMode = ThreadMode.MAIN)
-    fun onMessageEvent(device: BluetoothDevice){
-        bluetoothGatt = device.connectGatt(this,false,gattCallback)
+    fun onMessageEvent(event: BleEvent){
+        txtMsg.text = message.append("蓝牙正在连接...${event.device.name}...${event.device.address}\n").toString()
+        bluetoothGatt = event.device.connectGatt(this,false,gattCallback)
     }
+
+
 
     private var gattCallback = object : BluetoothGattCallback(){
         /**
          * 连接状态
          */
-        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when(newState){
                 BluetoothProfile.STATE_CONNECTED -> {
-                    txtMsg.text = message.append("蓝牙连接成功\n").toString()
+                    GlobalScope.launch(Dispatchers.IO){
+                        delay(500)
+                        withContext(Dispatchers.Main){
+                            txtMsg.text = message.append("蓝牙连接成功\n").toString()
+                            gatt.discoverServices()
+                        }
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     txtMsg.text = message.append("蓝牙连断开\n").toString()
@@ -76,12 +90,22 @@ class MainActivity : AppCompatActivity() {
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             bluetoothGatt?.let {
                 it.services.forEach { service ->
+                    message.append("{\n")
                     service.characteristics.forEach {
-                        mCharacteristic = it
+                        if (it.uuid == UUID.fromString(JDY_TAG_CHAR_DATA_UUID)){
+                            mCharacteristic = it
+                        }
+                        message.append("uuid:${it.uuid}\n")
+                    }
+                    GlobalScope.launch(Dispatchers.Main){
+                        txtMsg.text = message.append("}\n").toString()
                     }
                 }
+                GlobalScope.launch(Dispatchers.Main){
+                    txtMsg.text = message.append(mCharacteristic?.uuid).toString()
+                }
+                bluetoothGatt?.setCharacteristicNotification(mCharacteristic,true)
             }
-            bluetoothGatt?.setCharacteristicNotification(mCharacteristic,true)
         }
 
         override fun onCharacteristicRead(
@@ -125,18 +149,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        EventBus.getDefault().register(this)
+        if (!EventBus.getDefault().isRegistered(this)){
+            EventBus.getDefault().register(this)
+        }
     }
 
 
-    override fun onStop() {
-        super.onStop()
-        EventBus.getDefault().unregister(this)
-    }
 
     override fun onDestroy() {
         super.onDestroy()
         bluetoothGatt?.close()
         bluetoothGatt = null
+        EventBus.getDefault().unregister(this)
     }
 }
